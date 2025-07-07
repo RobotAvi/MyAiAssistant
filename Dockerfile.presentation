@@ -1,0 +1,72 @@
+# HR Assistant - Marp Presentation Dockerfile
+# Для развертывания презентации как отдельного сервиса
+
+FROM node:18-alpine AS base
+
+# Установка Marp CLI
+RUN npm install -g @marp-team/marp-cli
+
+# Создание рабочей директории
+WORKDIR /app
+
+# Копирование файлов презентации
+COPY HR_Assistant_Presentation.md .
+COPY README_PRESENTATION.md .
+COPY assets/ ./assets/
+
+# Генерация статических файлов
+RUN marp HR_Assistant_Presentation.md --html --output index.html
+RUN marp HR_Assistant_Presentation.md --pdf --output hr-assistant-presentation.pdf
+RUN marp HR_Assistant_Presentation.md --pptx --output hr-assistant-presentation.pptx
+
+# Production stage с веб-сервером
+FROM nginx:alpine AS production
+
+# Копирование статических файлов
+COPY --from=base /app/*.html /usr/share/nginx/html/
+COPY --from=base /app/*.pdf /usr/share/nginx/html/
+COPY --from=base /app/*.pptx /usr/share/nginx/html/
+COPY --from=base /app/README_PRESENTATION.md /usr/share/nginx/html/
+
+# Настройка Nginx для презентации
+RUN cat > /etc/nginx/conf.d/default.conf << 'EOF'
+server {
+    listen 80;
+    server_name localhost;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Gzip compression
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+
+    location / {
+        try_files $uri $uri/ =404;
+        add_header Cache-Control "no-cache";
+    }
+
+    location ~* \.(pdf|pptx)$ {
+        add_header Content-Disposition "attachment";
+        expires 1d;
+    }
+
+    location = /health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
+    }
+}
+EOF
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost/health || exit 1
+
+EXPOSE 80
+
+# Development stage с live preview
+FROM base AS development
+
+EXPOSE 8080
+
+CMD ["marp", "HR_Assistant_Presentation.md", "--preview", "--port", "8080", "--host", "0.0.0.0"]
