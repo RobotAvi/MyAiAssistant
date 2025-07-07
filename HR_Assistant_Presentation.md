@@ -93,7 +93,221 @@ style: |
 
 ---
 
-## 🔧 Технический стек
+## � C4 Архитектурные диаграммы
+
+### Level 1: System Context Diagram
+
+```mermaid
+C4Context
+    title System Context диаграмма для HR Assistant
+
+    Person(user, "Соискатель", "Пользователь, ищущий работу")
+    Person(hr, "HR Специалист", "Получает резюме и отклики")
+    
+    System(hrAssistant, "HR Assistant", "Автоматизированная система поиска работы с использованием ИИ")
+    
+    System_Ext(jobSites, "Job Sites", "HeadHunter, SuperJob, Habr Career")
+    System_Ext(openai, "OpenAI API", "GPT-4 для анализа резюме и вакансий")
+    System_Ext(telegram, "Telegram Bot API", "Уведомления пользователю")
+    System_Ext(email, "Email Service", "SMTP для отправки резюме")
+    
+    Rel(user, hrAssistant, "Загружает резюме, настраивает поиск")
+    Rel(hrAssistant, user, "Отправляет уведомления о вакансиях")
+    Rel(hrAssistant, jobSites, "Парсит вакансии")
+    Rel(hrAssistant, openai, "Анализирует резюме и вакансии")
+    Rel(hrAssistant, telegram, "Отправляет уведомления")
+    Rel(hrAssistant, email, "Отправляет резюме HR")
+    Rel(hrAssistant, hr, "Отправляет резюме и сопроводительные письма")
+```
+
+---
+
+### Level 2: Container Diagram
+
+```mermaid
+C4Container
+    title Container диаграмма для HR Assistant
+
+    Person(user, "Соискатель", "Пользователь системы")
+    
+    Container_Boundary(c1, "HR Assistant System") {
+        Container(frontend, "Web Frontend", "Next.js, React, TypeScript", "Веб-интерфейс для управления")
+        Container(api, "API Backend", "FastAPI, Python", "REST API для бизнес-логики")
+        Container(celery, "Task Workers", "Celery Workers", "Фоновая обработка задач")
+        Container(scheduler, "Task Scheduler", "Celery Beat", "Планировщик периодических задач")
+        Container(db, "Database", "PostgreSQL", "Хранение данных")
+        Container(cache, "Cache & Queue", "Redis", "Кэш и очереди задач")
+    }
+    
+    System_Ext(jobSites, "Job Sites", "Источники вакансий")
+    System_Ext(openai, "OpenAI API", "ИИ анализ")
+    System_Ext(telegram, "Telegram", "Уведомления")
+    System_Ext(email, "Email SMTP", "Отправка резюме")
+    
+    Rel(user, frontend, "Использует", "HTTPS")
+    Rel(frontend, api, "API вызовы", "JSON/REST")
+    Rel(api, db, "Читает/записывает", "SQL")
+    Rel(api, cache, "Кэширует данные", "Redis Protocol")
+    Rel(scheduler, cache, "Ставит задачи в очередь", "Redis")
+    Rel(celery, cache, "Получает задачи", "Redis")
+    Rel(celery, db, "Читает/записывает", "SQL")
+    Rel(celery, jobSites, "Парсит вакансии", "HTTP")
+    Rel(celery, openai, "Анализирует", "API")
+    Rel(celery, telegram, "Уведомляет", "Bot API")
+    Rel(celery, email, "Отправляет резюме", "SMTP")
+```
+
+---
+
+### Level 3: Component Diagram (Backend API)
+
+```mermaid
+C4Component
+    title Component диаграмма для API Backend
+
+    Container(frontend, "Web Frontend", "Next.js")
+    Container(workers, "Celery Workers", "Background Tasks")
+    
+    Container_Boundary(api, "API Backend") {
+        Component(userController, "User Controller", "FastAPI Router", "Управление пользователями")
+        Component(resumeController, "Resume Controller", "FastAPI Router", "Управление резюме")
+        Component(jobController, "Job Controller", "FastAPI Router", "Управление вакансиями")
+        Component(telegramController, "Telegram Controller", "FastAPI Router", "Telegram интеграция")
+        
+        Component(resumeProcessor, "Resume Processor", "Service", "Обработка резюме")
+        Component(jobScraper, "Job Scraper", "Service", "Парсинг вакансий")
+        Component(llmService, "LLM Service", "Service", "ИИ анализ")
+        Component(emailService, "Email Service", "Service", "Отправка email")
+        Component(telegramService, "Telegram Service", "Service", "Telegram уведомления")
+        
+        Component(userModel, "User Model", "SQLAlchemy", "Модель пользователя")
+        Component(resumeModel, "Resume Model", "SQLAlchemy", "Модель резюме")
+        Component(jobModel, "Job Model", "SQLAlchemy", "Модель вакансии")
+    }
+    
+    ContainerDb(db, "PostgreSQL", "База данных")
+    Container(cache, "Redis", "Кэш и очереди")
+    
+    Rel(frontend, userController, "API запросы")
+    Rel(frontend, resumeController, "API запросы")
+    Rel(frontend, jobController, "API запросы")
+    Rel(frontend, telegramController, "API запросы")
+    
+    Rel(userController, userModel, "Использует")
+    Rel(resumeController, resumeModel, "Использует")
+    Rel(resumeController, resumeProcessor, "Использует")
+    Rel(jobController, jobModel, "Использует")
+    Rel(telegramController, telegramService, "Использует")
+    
+    Rel(workers, jobScraper, "Выполняет задачи")
+    Rel(workers, llmService, "Выполняет анализ")
+    Rel(workers, emailService, "Отправляет email")
+    Rel(workers, telegramService, "Отправляет уведомления")
+    
+    Rel(userModel, db, "SQL запросы")
+    Rel(resumeModel, db, "SQL запросы")
+    Rel(jobModel, db, "SQL запросы")
+    
+    Rel(resumeProcessor, cache, "Кэширует результаты")
+    Rel(jobScraper, cache, "Кэширует данные")
+```
+
+---
+
+### Data Flow Diagram - Поток обработки данных
+
+```mermaid
+flowchart TD
+    A[Пользователь загружает резюме] --> B[Resume Processor]
+    B --> C[LLM Service анализирует резюме]
+    C --> D[Извлекает навыки и опыт]
+    D --> E[Сохраняет в PostgreSQL]
+    
+    F[Celery Beat запускает поиск] --> G[Job Scraper]
+    G --> H[Парсит вакансии с job-сайтов]
+    H --> I[LLM Service анализирует вакансии]
+    I --> J{Вакансия подходит?}
+    
+    J -->|Да| K[Сохраняет вакансию в DB]
+    J -->|Нет| L[Отклоняет вакансию]
+    
+    K --> M[Telegram Service уведомляет]
+    M --> N[Пользователь выбирает вакансии]
+    N --> O[Email Service отправляет резюме]
+    
+    P[Redis Cache] -.-> G
+    P -.-> I
+    P -.-> M
+    
+    Q[(PostgreSQL)] -.-> E
+    Q -.-> K
+    Q -.-> O
+    
+    style A fill:#e1f5fe
+    style M fill:#f3e5f5
+    style O fill:#e8f5e8
+    style J fill:#fff3e0
+```
+
+---
+
+### Схема интеграций и внешних сервисов
+
+```mermaid
+graph TB
+    subgraph "HR Assistant System"
+        API[FastAPI Backend]
+        WEB[Next.js Frontend]
+        CELERY[Celery Workers]
+        DB[(PostgreSQL)]
+        REDIS[(Redis)]
+    end
+    
+    subgraph "Внешние job-сайты"
+        HH[HeadHunter.ru]
+        SJ[SuperJob.ru]
+        HC[Habr Career]
+    end
+    
+    subgraph "AI и уведомления"
+        OPENAI[OpenAI GPT-4]
+        TG[Telegram Bot API]
+        SMTP[Email SMTP]
+    end
+    
+    subgraph "Пользователи"
+        USER[Соискатель]
+        HR[HR Специалист]
+    end
+    
+    USER --> WEB
+    WEB --> API
+    API --> DB
+    API --> REDIS
+    
+    CELERY --> DB
+    CELERY --> REDIS
+    CELERY --> HH
+    CELERY --> SJ
+    CELERY --> HC
+    CELERY --> OPENAI
+    CELERY --> TG
+    CELERY --> SMTP
+    
+    TG --> USER
+    SMTP --> HR
+    
+    style USER fill:#bbdefb
+    style HR fill:#c8e6c9
+    style OPENAI fill:#ffecb3
+    style TG fill:#f8bbd9
+    style DB fill:#b39ddb
+    style REDIS fill:#ffcdd2
+```
+
+---
+
+## �🔧 Технический стек
 
 | Компонент | Технология | Версия | Назначение |
 |-----------|------------|--------|------------|
